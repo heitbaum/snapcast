@@ -56,9 +56,9 @@ protected:
     std::string exe_;
     std::string path_;
     std::string params_;
-    bp::pipe pipe_stdout_;
-    bp::pipe pipe_stderr_;
-    bp::child process_;
+    boost::asio::readable_pipe pipe_stdout_;
+    boost::asio::readable_pipe pipe_stderr_;
+    bp::process process_;
 
     bool logStderr_;
     boost::asio::streambuf streambuf_stderr_;

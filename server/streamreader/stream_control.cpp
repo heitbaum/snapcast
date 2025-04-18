@@ -147,8 +147,10 @@ ScriptStreamControl::ScriptStreamControl(const boost::asio::any_io_executor& exe
 
 void ScriptStreamControl::doStart(const std::string& stream_id, const ServerSettings& server_setttings)
 {
-    pipe_stderr_ = bp::pipe();
-    pipe_stdout_ = bp::pipe();
+    boost::asio::io_context io_context;
+    boost::asio::cancellation_signal sig;
+    pipe_stderr_ = boost::asio::readable_pipe(io_context);
+    pipe_stdout_ = boost::asio::readable_pipe(io_context);
     stringstream params;
     params << " " << params_;
     params << " \"--stream=" + stream_id + "\"";
@@ -160,22 +162,24 @@ void ScriptStreamControl::doStart(const std::string& stream_id, const ServerSett
     LOG(DEBUG, LOG_TAG) << "Starting control script: '" << script_ << "', params: '" << params.str() << "'\n";
     try
     {
-        process_ = bp::child(script_ + params.str(), bp::std_out > pipe_stdout_, bp::std_err > pipe_stderr_, bp::std_in < in_,
-                             bp::on_exit = [](int exit, const std::error_code& ec_in)
-        {
-            auto severity = AixLog::Severity::debug;
-            if (exit != 0)
-                severity = AixLog::Severity::error;
-            LOG(severity, LOG_TAG) << "Exit code: " << exit << ", message: " << ec_in.message() << "\n";
-        });
+        process_ = bp::process(io_context, script_, params.str(), bp::process_stdio{in_, pipe_stdout_, pipe_stderr_});
+//        bp::async_execute(process_,
+//            boost::asio::bind_cancellation_slot(sig.slot(),
+//        [&](int exit, std::error_code ec_in)
+//        {
+//            auto severity = AixLog::Severity::debug;
+//            if (exit != 0)
+//                severity = AixLog::Severity::error;
+//            LOG(severity, LOG_TAG) << "Exit code: " << exit << ", message: " << ec_in.message() << "\n";
+//        }));
     }
     catch (const std::exception& e)
     {
         throw SnapException("Failed to start control script: '" + script_ + "', exception: " + e.what());
     }
 
-    stream_stdout_ = make_unique<boost::asio::posix::stream_descriptor>(executor_, pipe_stdout_.native_source());
-    stream_stderr_ = make_unique<boost::asio::posix::stream_descriptor>(executor_, pipe_stderr_.native_source());
+    stream_stdout_ = make_unique<boost::asio::posix::stream_descriptor>(executor_, pipe_stdout_.native_handle());
+    stream_stderr_ = make_unique<boost::asio::posix::stream_descriptor>(executor_, pipe_stderr_.native_handle());
     stdoutReadLine();
     stderrReadLine();
 }
@@ -185,8 +189,7 @@ void ScriptStreamControl::doCommand(const jsonrpcpp::Request& request)
 {
     std::string msg = request.to_json().dump() + "\n";
     LOG(INFO, LOG_TAG) << "Sending request: " << msg;
-    in_.write(msg.data(), msg.size());
-    in_.flush();
+    in_.write_some(boost::asio::buffer(msg.data(), msg.size()));
 }
 
 

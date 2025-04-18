@@ -90,9 +90,9 @@ private:
     void stderrReadLine();
     void stdoutReadLine();
 
-    bp::child process_;
-    bp::pipe pipe_stdout_;
-    bp::pipe pipe_stderr_;
+    bp::process process_;
+    boost::asio::readable_pipe pipe_stdout_;
+    boost::asio::readable_pipe pipe_stderr_;
     std::unique_ptr<boost::asio::posix::stream_descriptor> stream_stdout_;
     std::unique_ptr<boost::asio::posix::stream_descriptor> stream_stderr_;
     boost::asio::streambuf streambuf_stdout_;
@@ -100,7 +100,7 @@ private:
 
     std::string script_;
     std::string params_;
-    bp::opstream in_;
+    boost::asio::writable_pipe in_;
 };
 
 } // namespace streamreader

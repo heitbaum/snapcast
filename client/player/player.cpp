@@ -230,7 +230,8 @@ void Player::setVolume(const Volume& volume)
     {
 #ifdef SUPPORTS_VOLUME_SCRIPT
         static std::optional<Volume> pending_volume_change;
-        static boost::process::child mixer_script_process;
+        boost::asio::io_context ctx;
+        boost::asio::cancellation_signal sig;
         if (mixer_script_process.running())
         {
             pending_volume_change = volume;
@@ -240,23 +241,22 @@ void Player::setVolume(const Volume& volume)
         {
             try
             {
-                namespace bp = boost::process;
-                mixer_script_process = bp::child(bp::exe = settings_.mixer.parameter,
-                                                 bp::args = {"--volume", cpt::to_string(volume.volume), "--mute", volume.mute ? "true" : "false"},
-                                                 bp::on_exit(
-                                                     [&](int ret_val, std::error_code ec)
-                {
-                    std::unique_lock<std::mutex> lock(mutex_);
-                    LOG(DEBUG, LOG_TAG) << "Error code: " << ec.message() << ", i: " << ret_val << "\n";
-                    if (pending_volume_change.has_value())
-                    {
-                        Volume v = pending_volume_change.value();
-                        pending_volume_change = std::nullopt;
-                        lock.unlock();
-                        setVolume(v);
-                    }
-                }),
-                                                 io_context_);
+                mixer_script_process = bp::process(ctx, settings_.mixer.parameter,
+                                                 {"--volume", cpt::to_string(volume.volume), "--mute", volume.mute ? "true" : "false"});
+//                bp::async_execute(mixer_script_process,
+//                    boost::asio::bind_cancellation_slot(sig.slot(),
+//                    [&](int ret_val, std::error_code ec)
+//                {
+//                    std::unique_lock<std::mutex> lock(mutex_);
+//                    LOG(DEBUG, LOG_TAG) << "Error code: " << ec.message() << ", i: " << ret_val << "\n";
+//                    if (pending_volume_change.has_value())
+//                    {
+//                        Volume v = pending_volume_change.value();
+//                        pending_volume_change = std::nullopt;
+//                        lock.unlock();
+//                        setVolume(v);
+//                    }
+//                }));
             }
             catch (const std::exception& e)
             {

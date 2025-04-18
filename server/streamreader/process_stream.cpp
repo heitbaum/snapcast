@@ -95,22 +95,24 @@ void ProcessStream::initExeAndPath(const std::string& filename)
 
 void ProcessStream::connect()
 {
+    boost::asio::io_context io_context;
+
     if (!active_)
         return;
     initExeAndPath(uri_.path);
     LOG(DEBUG, LOG_TAG) << "Launching: '" << path_ + exe_ << "', with params: '" << params_ << "', in path: '" << path_ << "'\n";
 
-    pipe_stdout_ = bp::pipe();
+    pipe_stdout_ = boost::asio::readable_pipe(io_context);
     // could use bp::async_pipe, but this is broken in boost 1.72:
     // https://github.com/boostorg/process/issues/116
-    pipe_stderr_ = bp::pipe();
+    pipe_stderr_ = boost::asio::readable_pipe(io_context);
     // stdout pipe should not block
-    int flags = fcntl(pipe_stdout_.native_source(), F_GETFL, 0);
-    fcntl(pipe_stdout_.native_source(), F_SETFL, flags | O_NONBLOCK);
+    int flags = fcntl(pipe_stdout_.native_handle(), F_GETFL, 0);
+    fcntl(pipe_stdout_.native_handle(), F_SETFL, flags | O_NONBLOCK);
 
-    process_ = bp::child(path_ + exe_ + " " + params_, bp::std_out > pipe_stdout_, bp::std_err > pipe_stderr_, bp::start_dir = path_);
-    stream_ = make_unique<stream_descriptor>(strand_, pipe_stdout_.native_source());
-    stream_stderr_ = make_unique<stream_descriptor>(strand_, pipe_stderr_.native_source());
+    process_ = bp::process(io_context, path_ + exe_, params_, bp::process_stdio{ in_, pipe_stdout_, pipe_stderr_}, bp::process_start_dir(path_));
+    stream_ = make_unique<stream_descriptor>(strand_, pipe_stdout_.native_handle());
+    stream_stderr_ = make_unique<stream_descriptor>(strand_, pipe_stderr_.native_handle());
     on_connect();
     if (wd_timeout_sec_ > 0)
     {
@@ -174,7 +176,7 @@ void ProcessStream::stderrReadLine()
 void ProcessStream::onTimeout(const Watchdog& /*watchdog*/, std::chrono::milliseconds ms)
 {
     LOG(ERROR, LOG_TAG) << "Watchdog timeout: " << ms.count() / 1000 << "s\n";
-    if (process_)
+    if (process_.running())
         ::kill(-process_.native_handle(), SIGINT);
 }
 

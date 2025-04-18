@@ -37,6 +37,11 @@
 #define SUPPORTS_VOLUME_SCRIPT
 #endif
 
+#ifdef SUPPORTS_VOLUME_SCRIPT
+#include <boost/process.hpp>
+namespace bp = boost::process;
+#endif
+
 namespace player
 {
 
@@ -104,6 +109,9 @@ protected:
     }
 
     boost::asio::io_context& io_context_;
+#ifdef SUPPORTS_VOLUME_SCRIPT
+    bp::process mixer_script_process;
+#endif
     std::atomic<bool> active_;
     std::shared_ptr<Stream> stream_;
     std::thread playerThread_;
